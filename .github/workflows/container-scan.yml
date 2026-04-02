@@ -1,0 +1,62 @@
+name: Container Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/container-scan.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'Dockerfile'
+
+jobs:
+  container-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      # Run Trivy container scan on Dockerfile
+      - name: Trivy Dockerfile Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: 'Dockerfile'
+          format: 'sarif'
+          output: 'dockerfile-scan.sarif'
+        continue-on-error: true
+      
+      # Upload results
+      - name: Upload Dockerfile Scan Results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: dockerfile-scan.sarif
+          category: 'Dockerfile'
+      
+      # Additional Dockerfile checks
+      - name: Dockerfile Best Practices
+        run: |
+          echo "Checking Dockerfile security best practices..."
+          
+          # Check for running as root
+          if grep -q "^USER.*root" Dockerfile; then
+            echo "⚠️  WARNING: Container runs as root"
+          fi
+          
+          # Check for latest tag
+          if grep -q "FROM.*:latest" Dockerfile; then
+            echo "❌ ERROR: Using :latest tag (not pinned)"
+            exit 1
+          fi
+          
+          # Check for healthcheck
+          if ! grep -q "HEALTHCHECK" Dockerfile; then
+            echo "⚠️  WARNING: No HEALTHCHECK defined"
+          fi
+          
+          echo "✅ Dockerfile checks complete"
+
